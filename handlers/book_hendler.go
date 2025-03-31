@@ -18,14 +18,46 @@ func GetAllBooks(c *gin.Context) {
 	c.JSON(http.StatusOK, books)
 }
 func AddBooks(c *gin.Context) {
-	var newBooks models.Book
+	var newBooks []models.Book
 	if err := c.ShouldBindJSON(&newBooks); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	newBooks.Id = len(books) + 1
-	books = append(books, newBooks)
+	mu.Lock()
+	defer mu.Unlock()
+	startId := len(books) + 1
+	for i := range newBooks {
+		newBooks[i].Id = startId + i
+		books = append(books, newBooks[i])
+	}
 	c.JSON(http.StatusCreated, newBooks)
+}
+
+func GetIdBook(c *gin.Context) {
+	idParam := c.Param("id")
+	idB, err := strconv.Atoi(idParam)
+
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"Error": "Invalid Book id"})
+		return
+	}
+	var oneBook models.Book
+	found := false
+	mu.Lock()
+	for _, book := range books {
+		if book.Id == idB {
+			oneBook = book
+			found = true
+			break
+		}
+	}
+	mu.Unlock()
+
+	if !found {
+		c.JSON(http.StatusBadRequest, gin.H{"Error": "Book not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"This book": oneBook})
 }
 
 func UpdateBooks(c *gin.Context) {
@@ -39,10 +71,10 @@ func UpdateBooks(c *gin.Context) {
 	var oldBook models.Book
 	found := -1
 	mu.Lock()
-	for _, book := range books {
+	for i, book := range books {
 		if book.Id == idB {
 			oldBook = book
-			found = true
+			found = i
 			break
 		}
 	}
@@ -58,11 +90,12 @@ func UpdateBooks(c *gin.Context) {
 		return
 	}
 	mu.Lock()
-	books[idB] = updateBook
+	updateBook.Id = books[found].Id
+	books[found] = updateBook
 	mu.Unlock()
 	c.JSON(http.StatusOK, gin.H{"message": "Book updated Successfully!",
 		"OldBook":    oldBook,
-		"UpdateBook": updateBook})
+		"UpdateBook": books[found]})
 }
 
 func DeleteBook(c *gin.Context) {
