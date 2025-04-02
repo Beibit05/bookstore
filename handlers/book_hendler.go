@@ -15,7 +15,32 @@ var books = []models.Book{
 var mu sync.Mutex
 
 func GetAllBooks(c *gin.Context) {
-	c.JSON(http.StatusOK, books)
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "5"))
+	category := c.Query("cate")
+	author := c.Query("author")
+
+	var filtredBooks []models.Book
+	for _, book := range books {
+		if (category == "" || strconv.Itoa(book.CategoryId) == category) &&
+			(author == "" || strconv.Itoa(book.AuthorId) == author) {
+			filtredBooks = append(filtredBooks, book)
+		}
+	}
+
+	start := (page - 1) * limit
+	end := start + limit
+
+	if start >= len(filtredBooks) {
+		c.JSON(http.StatusOK, []models.Book{})
+		return
+	}
+	if end > len(filtredBooks) {
+		end = len(filtredBooks)
+	}
+
+	c.JSON(http.StatusOK, filtredBooks[start:end])
+
 }
 func AddBooks(c *gin.Context) {
 	var newBooks []models.Book
@@ -23,8 +48,21 @@ func AddBooks(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	var validationErrors []string
 	mu.Lock()
 	defer mu.Unlock()
+	for i := range newBooks {
+		if newBooks[i].Title == "" {
+			validationErrors = append(validationErrors, "Book title is required")
+		}
+		if newBooks[i].Price <= 0 {
+			validationErrors = append(validationErrors, "Price must be greater than zero")
+		}
+	}
+	if len(validationErrors) > 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"validation_errors": validationErrors})
+		return
+	}
 	startId := len(books) + 1
 	for i := range newBooks {
 		newBooks[i].Id = startId + i
